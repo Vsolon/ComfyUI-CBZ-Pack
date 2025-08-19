@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cbz_pack"
-version = "0.0.1"
+version = "0.0.2"
 description = "Nodes for Handling CBZ MetaData and Images as List or Bash"
 authors = [
   {name = "Vsolon", email = "you@gmail.com"}
@@ -13,10 +13,10 @@ readme = "README.md"
 license = {text = "GNU General Public License v3"}
 classifiers = []
 dependencies = [
-
+    "torch",        # For tensor operations and image handling
+    "numpy",        # For array operations
+    "Pillow>=8.0.0", # For image processing (PIL/Pillow)
 ]
-
-
 
 [project.optional-dependencies]
 dev = [
@@ -32,14 +32,10 @@ dev = [
 bugs = "https://github.com/Vsolon/cbz_pack/issues"
 homepage = "https://github.com/Vsolon/cbz_pack"
 
-
 [tool.comfy]
 PublisherId = "Vsolon"
 DisplayName = "ComfyUI-CBZ-Pack"
 Icon = ""
-
-
-
 
 [tool.setuptools.package-data]
 "*" = ["*.*"]

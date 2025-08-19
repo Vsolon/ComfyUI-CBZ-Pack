@@ -1,118 +1,273 @@
+import os
+import zipfile
+import xml.etree.ElementTree as ET
 from inspect import cleandoc
-class Example:
+import torch
+import numpy as np
+from PIL import Image, ImageOps
+import tempfile
+import json
+
+class CBZUnpacker:
     """
-    A example node
+    A CBZ unpacker node for ComfyUI
+    
+    This node extracts images and metadata from CBZ (Comic Book Archive) files.
+    CBZ files are essentially ZIP archives containing comic book pages as images
+    and optional metadata in ComicInfo.xml format.
 
     Class methods
     -------------
     INPUT_TYPES (dict):
         Tell the main program input parameters of nodes.
     IS_CHANGED:
-        optional method to control when the node is re executed.
+        Optional method to control when the node is re executed.
 
     Attributes
     ----------
     RETURN_TYPES (`tuple`):
-        The type of each element in the output tulple.
+        The type of each element in the output tuple.
     RETURN_NAMES (`tuple`):
-        Optional: The name of each output in the output tulple.
+        The name of each output in the output tuple.
     FUNCTION (`str`):
-        The name of the entry-point method. For example, if `FUNCTION = "execute"` then it will run Example().execute()
+        The name of the entry-point method.
     OUTPUT_NODE ([`bool`]):
-        If this node is an output node that outputs a result/image from the graph. The SaveImage node is an example.
-        The backend iterates on these output nodes and tries to execute all their parents if their parent graph is properly connected.
-        Assumed to be False if not present.
+        If this node is an output node that outputs a result/image from the graph.
     CATEGORY (`str`):
         The category the node should appear in the UI.
-    execute(s) -> tuple || None:
-        The entry point method. The name of this method must be the same as the value of property `FUNCTION`.
-        For example, if `FUNCTION = "execute"` then this method's name must be `execute`, if `FUNCTION = "foo"` then it must be `foo`.
     """
+    
     def __init__(self):
         pass
 
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         """
-            Return a dictionary which contains config for all input fields.
-            Some types (string): "MODEL", "VAE", "CLIP", "CONDITIONING", "LATENT", "IMAGE", "INT", "STRING", "FLOAT".
-            Input types "INT", "STRING" or "FLOAT" are special values for fields on the node.
-            The type can be a list for selection.
-
-            Returns: `dict`:
-                - Key input_fields_group (`string`): Can be either required, hidden or optional. A node class must have property `required`
-                - Value input_fields (`dict`): Contains input fields config:
-                    * Key field_name (`string`): Name of a entry-point method's argument
-                    * Value field_config (`tuple`):
-                        + First value is a string indicate the type of field or a list for selection.
-                        + Secound value is a config for type "INT", "STRING" or "FLOAT".
+        Return a dictionary which contains config for all input fields.
+        
+        Returns: `dict`:
+            Configuration for input fields including CBZ file path and options.
         """
         return {
             "required": {
-                "image": ("Image", { "tooltip": "This is an image"}),
-                "int_field": ("INT", {
-                    "default": 0,
-                    "min": 0, #Minimum value
-                    "max": 4096, #Maximum value
-                    "step": 64, #Slider's step
-                    "display": "number" # Cosmetic only: display as "number" or "slider"
-                }),
-                "float_field": ("FLOAT", {
-                    "default": 1.0,
-                    "min": 0.0,
-                    "max": 10.0,
-                    "step": 0.01,
-                    "round": 0.001, #The value represeting the precision to round to, will be set to the step value by default. Can be set to False to disable rounding.
-                    "display": "number"}),
-                "print_to_screen": (["enable", "disable"],),
-                "string_field": ("STRING", {
-                    "multiline": False, #True if you want the field to look like the one on the ClipTextEncode node
-                    "default": "Hello World!"
+                "cbz_path": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Path to the CBZ file to extract"
                 }),
             },
+            "optional": {
+                "image_load_cap": ("INT", {
+                    "default": 0, 
+                    "min": 0, 
+                    "step": 1,
+                    "tooltip": "Maximum number of images to load (0 = no limit)"
+                }),
+                "start_index": ("INT", {
+                    "default": 0, 
+                    "min": 0, 
+                    "max": 0xffffffffffffffff, 
+                    "step": 1,
+                    "tooltip": "Start loading from this image index"
+                }),
+                "sort_images": ("BOOLEAN", {
+                    "default": True, 
+                    "label_on": "enabled", 
+                    "label_off": "disabled",
+                    "tooltip": "Sort images by filename"
+                }),
+            }
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    #RETURN_NAMES = ("image_output_name",)
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGES", "MASKS", "FILENAMES", "METADATA")
+    OUTPUT_IS_LIST = (True, True, True, False)
+    
     DESCRIPTION = cleandoc(__doc__)
-    FUNCTION = "test"
+    FUNCTION = "unpack_cbz"
+    
+    CATEGORY = "image/cbz"
 
-    #OUTPUT_NODE = False
-    #OUTPUT_TOOLTIPS = ("",) # Tooltips for the output node
+    @classmethod
+    def IS_CHANGED(cls, cbz_path, **kwargs):
+        """
+        Check if the CBZ file has changed by comparing modification time.
+        """
+        if not os.path.exists(cbz_path):
+            return "file_not_found"
+        return os.path.getmtime(cbz_path)
 
-    CATEGORY = "Example"
+    def parse_comic_info(self, xml_content):
+        """
+        Parse ComicInfo.xml content and return metadata as JSON string.
+        
+        Args:
+            xml_content (str): Raw XML content from ComicInfo.xml
+            
+        Returns:
+            str: JSON formatted metadata
+        """
+        try:
+            root = ET.fromstring(xml_content)
+            metadata = {}
+            
+            # Common ComicInfo.xml fields
+            fields = [
+                'Title', 'Series', 'Number', 'Count', 'Volume', 'AlternateSeries',
+                'AlternateNumber', 'StoryTitle', 'Summary', 'Notes', 'Year', 'Month',
+                'Day', 'Writer', 'Penciller', 'Inker', 'Colorist', 'Letterer',
+                'CoverArtist', 'Editor', 'Publisher', 'Imprint', 'Genre', 'Web',
+                'PageCount', 'LanguageISO', 'Format', 'BlackAndWhite', 'Manga',
+                'Characters', 'Teams', 'Locations', 'ScanInformation', 'StoryArc',
+                'SeriesGroup', 'AgeRating', 'CommunityRating'
+            ]
+            
+            for field in fields:
+                element = root.find(field)
+                if element is not None and element.text:
+                    metadata[field] = element.text
+            
+            # Handle Pages element if present
+            pages_element = root.find('Pages')
+            if pages_element is not None:
+                pages = []
+                for page in pages_element.findall('Page'):
+                    page_info = {}
+                    for attr in ['Image', 'Type', 'DoublePage', 'ImageSize', 'Key']:
+                        if attr in page.attrib:
+                            page_info[attr] = page.attrib[attr]
+                    if page_info:
+                        pages.append(page_info)
+                if pages:
+                    metadata['Pages'] = pages
+            
+            return json.dumps(metadata, indent=2)
+            
+        except ET.ParseError as e:
+            return json.dumps({"error": f"Failed to parse ComicInfo.xml: {str(e)}"}, indent=2)
+        except Exception as e:
+            return json.dumps({"error": f"Error processing metadata: {str(e)}"}, indent=2)
 
-    def test(self, image, string_field, int_field, float_field, print_to_screen):
-        if print_to_screen == "enable":
-            print(f"""Your input contains:
-                string_field aka input text: {string_field}
-                int_field: {int_field}
-                float_field: {float_field}
-            """)
-        #do some processing on the image, in this example I just invert it
-        image = 1.0 - image
-        return (image,)
-
-    """
-        The node will always be re executed if any of the inputs change but
-        this method can be used to force the node to execute again even when the inputs don't change.
-        You can make this node return a number or a string. This value will be compared to the one returned the last time the node was
-        executed, if it is different the node will be executed again.
-        This method is used in the core repo for the LoadImage node where they return the image hash as a string, if the image hash
-        changes between executions the LoadImage node is executed again.
-    """
-    #@classmethod
-    #def IS_CHANGED(s, image, string_field, int_field, float_field, print_to_screen):
-    #    return ""
+    def unpack_cbz(self, cbz_path, image_load_cap=0, start_index=0, sort_images=True):
+        """
+        Extract images and metadata from CBZ file.
+        
+        Args:
+            cbz_path (str): Path to the CBZ file
+            image_load_cap (int): Maximum number of images to load (0 = no limit)
+            start_index (int): Start loading from this image index
+            sort_images (bool): Whether to sort images by filename
+            
+        Returns:
+            tuple: (images, masks, filenames, metadata)
+        """
+        if not os.path.exists(cbz_path):
+            raise FileNotFoundError(f"CBZ file '{cbz_path}' not found.")
+        
+        if not cbz_path.lower().endswith('.cbz'):
+            raise ValueError("File must have .cbz extension.")
+        
+        images = []
+        masks = []
+        filenames = []
+        metadata = "{}"  # Default empty JSON
+        
+        # Valid image extensions
+        valid_extensions = ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tiff')
+        
+        try:
+            with zipfile.ZipFile(cbz_path, 'r') as cbz_file:
+                # Extract ComicInfo.xml if present
+                try:
+                    with cbz_file.open('ComicInfo.xml') as comic_info:
+                        xml_content = comic_info.read().decode('utf-8')
+                        metadata = self.parse_comic_info(xml_content)
+                except KeyError:
+                    # ComicInfo.xml not found, use default metadata
+                    metadata = json.dumps({
+                        "info": "No ComicInfo.xml found in CBZ file",
+                        "filename": os.path.basename(cbz_path)
+                    }, indent=2)
+                
+                # Get list of image files in the archive
+                image_files = [f for f in cbz_file.namelist() 
+                              if f.lower().endswith(valid_extensions) and not f.startswith('__MACOSX/')]
+                
+                if not image_files:
+                    raise ValueError("No valid image files found in CBZ archive.")
+                
+                # Sort images if requested
+                if sort_images:
+                    image_files.sort()
+                
+                # Apply start_index
+                image_files = image_files[start_index:]
+                
+                # Apply image load cap
+                if image_load_cap > 0:
+                    image_files = image_files[:image_load_cap]
+                
+                # Process each image
+                for image_file in image_files:
+                    try:
+                        # Extract image data
+                        with cbz_file.open(image_file) as img_data:
+                            # Create temporary file to load with PIL
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(image_file)[1]) as temp_file:
+                                temp_file.write(img_data.read())
+                                temp_path = temp_file.name
+                        
+                        # Load and process image
+                        try:
+                            pil_image = Image.open(temp_path)
+                            pil_image = ImageOps.exif_transpose(pil_image)
+                            
+                            # Convert to RGB
+                            rgb_image = pil_image.convert("RGB")
+                            image_array = np.array(rgb_image).astype(np.float32) / 255.0
+                            image_tensor = torch.from_numpy(image_array)[None,]
+                            
+                            # Handle alpha channel for mask
+                            if 'A' in pil_image.getbands():
+                                mask_array = np.array(pil_image.getchannel('A')).astype(np.float32) / 255.0
+                                mask_tensor = 1. - torch.from_numpy(mask_array)
+                            else:
+                                # Create empty mask if no alpha channel
+                                mask_tensor = torch.zeros((rgb_image.height, rgb_image.width), dtype=torch.float32, device="cpu")
+                            
+                            images.append(image_tensor)
+                            masks.append(mask_tensor)
+                            filenames.append(image_file)
+                            
+                        finally:
+                            # Clean up temporary file
+                            try:
+                                os.unlink(temp_path)
+                            except:
+                                pass
+                                
+                    except Exception as e:
+                        print(f"Warning: Failed to process image {image_file}: {str(e)}")
+                        continue
+        
+        except zipfile.BadZipFile:
+            raise ValueError("Invalid CBZ file: not a valid ZIP archive.")
+        except Exception as e:
+            raise RuntimeError(f"Error processing CBZ file: {str(e)}")
+        
+        if not images:
+            raise ValueError("No images could be loaded from the CBZ file.")
+        
+        return (images, masks, filenames, metadata)
 
 
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "Example": Example
+    "CBZUnpacker": CBZUnpacker
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Example": "Example Node"
+    "CBZUnpacker": "CBZ Unpacker"
 }
