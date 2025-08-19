@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cbz_pack"
-version = "0.0.2"
+version = "0.0.3"
 description = "Nodes for Handling CBZ MetaData and Images as List or Bash"
 authors = [
   {name = "Vsolon", email = "you@gmail.com"}
