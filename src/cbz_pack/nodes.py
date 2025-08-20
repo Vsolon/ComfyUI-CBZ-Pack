@@ -1,4 +1,8 @@
-import os
+"suffix": ("STRING", {
+                    "default": "_processed",
+                    "multiline": False,
+                    "tooltip": "Suffix to add to output filename"
+                }),import os
 import zipfile
 import xml.etree.ElementTree as ET
 from inspect import cleandoc
@@ -81,9 +85,9 @@ class CBZUnpacker:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "STRING", "STRING")
-    RETURN_NAMES = ("IMAGES", "FILENAMES", "METADATA")
-    OUTPUT_IS_LIST = (True, True, False)
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGES", "FILENAMES", "METADATA", "CBZ_ID")
+    OUTPUT_IS_LIST = (True, True, False, True)
     
     DESCRIPTION = cleandoc(__doc__)
     FUNCTION = "unpack_cbz"
@@ -171,6 +175,9 @@ class CBZUnpacker:
         
         images = []
         filenames = []
+        
+        # Generate unique CBZ identifier
+        cbz_id = f"cbz_{hash(cbz_path)}_{os.path.basename(cbz_path)}"
         metadata = "{}"  # Default empty JSON
         
         # Valid image extensions
@@ -250,7 +257,10 @@ class CBZUnpacker:
         if not images:
             raise ValueError("No images could be loaded from the CBZ file.")
         
-        return (images, filenames, metadata)
+        # Create CBZ_ID list (same ID for all images from this CBZ)
+        cbz_ids = [cbz_id] * len(images)
+        
+        return (images, filenames, metadata, cbz_ids)
 
 
 class DirToCBZ:
@@ -349,7 +359,109 @@ class DirToCBZ:
         if not cbz_files:
             print(f"Warning: No CBZ files found in directory '{directory_path}'")
         
-        return (cbz_files,)
+        return (cbz_ids,)
+
+
+class CBZCollector:
+    """
+    A CBZ collector node that groups images by CBZ ID
+    
+    This node collects images that have been processed individually
+    and groups them back together by their original CBZ file,
+    preparing them for export. This allows for arbitrary processing
+    nodes to be inserted between Unpacker and Exporter.
+    
+    The node waits until it has received all images for a CBZ
+    before outputting the complete set.
+    """
+    
+    def __init__(self):
+        self.image_groups = {}
+        self.filename_groups = {}
+        self.metadata_cache = {}
+        self.expected_counts = {}
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Processed images"}),
+                "filenames": ("STRING", {"tooltip": "Original filenames"}),
+                "metadata": ("STRING", {"tooltip": "CBZ metadata"}),
+                "cbz_ids": ("STRING", {"tooltip": "CBZ identifier"}),
+            },
+            "optional": {
+                "force_output": ("BOOLEAN", {
+                    "default": False,
+                    "label_on": "enabled",
+                    "label_off": "disabled",
+                    "tooltip": "Force output even if collection seems incomplete"
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGES", "FILENAMES", "METADATA", "CBZ_PATH")
+    OUTPUT_IS_LIST = (True, True, False, False)
+    INPUT_IS_LIST = True
+    
+    DESCRIPTION = cleandoc(__doc__)
+    FUNCTION = "collect_cbz_data"
+    
+    CATEGORY = "image/cbz"
+
+    @classmethod  
+    def IS_CHANGED(cls, **kwargs):
+        # Always re-execute to handle dynamic collection
+        return float("NaN")
+
+    def collect_cbz_data(self, images, filenames, metadata, cbz_ids, force_output=False):
+        """
+        Collect and group images by CBZ ID.
+        """
+        print(f"CBZCollector: Processing {len(images)} items")
+        
+        # Group data by CBZ ID
+        for img, fname, meta, cbz_id in zip(images, filenames, metadata, cbz_ids):
+            if cbz_id not in self.image_groups:
+                self.image_groups[cbz_id] = []
+                self.filename_groups[cbz_id] = []
+                self.metadata_cache[cbz_id] = meta
+            
+            self.image_groups[cbz_id].append(img)
+            self.filename_groups[cbz_id].append(fname)
+        
+        # Output complete CBZ groups
+        all_images = []
+        all_filenames = []
+        all_metadata = []
+        all_cbz_paths = []
+        
+        for cbz_id in list(self.image_groups.keys()):
+            images_for_cbz = self.image_groups[cbz_id]
+            filenames_for_cbz = self.filename_groups[cbz_id]
+            metadata_for_cbz = self.metadata_cache[cbz_id]
+            
+            # Extract original path from CBZ ID
+            cbz_path = cbz_id.split('_', 2)[-1] if '_' in cbz_id else f"{cbz_id}.cbz"
+            
+            print(f"CBZCollector: Outputting {len(images_for_cbz)} images for {cbz_path}")
+            
+            # Add to output lists
+            all_images.extend(images_for_cbz)
+            all_filenames.extend(filenames_for_cbz)
+            all_metadata.append(metadata_for_cbz)
+            all_cbz_paths.append(cbz_path)
+            
+            # Clear processed group
+            del self.image_groups[cbz_id]
+            del self.filename_groups[cbz_id]
+            del self.metadata_cache[cbz_id]
+        
+        if not all_images:
+            raise ValueError("No complete CBZ groups ready for output")
+        
+        return (all_images, all_filenames, all_metadata, all_cbz_paths)
 
 
 class ExportCBZ:
@@ -377,10 +489,11 @@ class ExportCBZ:
                 "images": ("IMAGE", {"tooltip": "List of processed images"}),
                 "filenames": ("STRING", {"tooltip": "Original filenames from CBZ"}),
                 "metadata": ("STRING", {"tooltip": "Metadata JSON string"}),
-                "output_path": ("STRING", {
+                "cbz_path": ("STRING", {"tooltip": "Original CBZ path for naming"}),
+                "output_directory": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Output CBZ file path (including .cbz extension)"
+                    "tooltip": "Output directory (leave empty to use same as input)"
                 }),
             },
             "optional": {
@@ -407,6 +520,7 @@ class ExportCBZ:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("OUTPUT_PATH",)
     OUTPUT_IS_LIST = (False,)
+    INPUT_IS_LIST = True  # This node expects all inputs as lists
     
     DESCRIPTION = cleandoc(__doc__)
     FUNCTION = "export_cbz"
@@ -463,7 +577,7 @@ class ExportCBZ:
         except (json.JSONDecodeError, Exception):
             return None
 
-    def export_cbz(self, images, filenames, metadata, output_path, 
+    def export_cbz(self, images, filenames, metadata, cbz_path, output_directory="", suffix="_processed",
                    image_quality=95, image_format="JPEG", preserve_structure=True):
         """
         Export images and metadata to a CBZ file.
@@ -472,7 +586,9 @@ class ExportCBZ:
             images: List of image tensors
             filenames: List of original filenames
             metadata: JSON metadata string
-            output_path: Output CBZ file path
+            cbz_path: Original CBZ path for reference
+            output_directory: Output directory (empty = same as input)
+            suffix: Suffix for output filename
             image_quality: JPEG quality (1-100)
             image_format: Output format ("JPEG" or "PNG")
             preserve_structure: Keep original filenames and structure
@@ -480,16 +596,25 @@ class ExportCBZ:
         Returns:
             tuple: (output_path,)
         """
-        if not output_path:
-            raise ValueError("Output path cannot be empty.")
+        # Generate output path
+        if not output_directory:
+            output_directory = os.path.dirname(cbz_path)
         
-        if not output_path.lower().endswith('.cbz'):
-            output_path += '.cbz'
+        base_name = os.path.splitext(os.path.basename(cbz_path))[0]
+        output_filename = f"{base_name}{suffix}.cbz"
+        output_path = os.path.join(output_directory, output_filename)
         
         # Ensure output directory exists
-        output_dir = os.path.dirname(output_path)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        
+        # Handle the case where inputs might be lists or single items
+        if not isinstance(images, list):
+            images = [images]
+        if not isinstance(filenames, list):
+            filenames = [filenames]
+        
+        print(f"ExportCBZ: Processing {len(images)} images for {output_path}")
         
         if len(images) != len(filenames):
             raise ValueError(f"Number of images ({len(images)}) must match number of filenames ({len(filenames)})")
@@ -557,12 +682,14 @@ class ExportCBZ:
 NODE_CLASS_MAPPINGS = {
     "CBZUnpacker": CBZUnpacker,
     "DirToCBZ": DirToCBZ,
+    "CBZCollector": CBZCollector,
     "ExportCBZ": ExportCBZ
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CBZUnpacker": "CBZ Unpacker",
-    "DirToCBZ": "Directory to CBZ List",
+    "DirToCBZ": "Directory to CBZ List", 
+    "CBZCollector": "CBZ Collector",
     "ExportCBZ": "Export CBZ"
 }
