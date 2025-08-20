@@ -10,6 +10,137 @@ import json
 import glob
 import shutil
 
+
+class DirToCBZPassthrough:
+    """
+    Debug passthrough node for DirToCBZ output
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "cbz_paths": ("STRING", {"tooltip": "CBZ paths from DirToCBZ"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("CBZ_PATHS",)
+    OUTPUT_IS_LIST = (True,)
+    INPUT_IS_LIST = (True,)
+    
+    FUNCTION = "passthrough"
+    CATEGORY = "image/cbz/debug"
+
+    def passthrough(self, cbz_paths):
+        print(f"DirToCBZPassthrough: Received {len(cbz_paths)} CBZ paths")
+        for i, path in enumerate(cbz_paths):
+            print(f"  [{i}]: {path}")
+        return (cbz_paths,)
+
+
+class CBZUnpackerPassthrough:
+    """
+    Debug passthrough node for CBZUnpacker output
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Images from CBZUnpacker"}),
+                "filenames": ("STRING", {"tooltip": "Filenames from CBZUnpacker"}),
+                "metadata": ("STRING", {"tooltip": "Metadata from CBZUnpacker"}),
+                "cbz_ids": ("STRING", {"tooltip": "CBZ IDs from CBZUnpacker"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGES", "FILENAMES", "METADATA", "CBZ_IDS")
+    OUTPUT_IS_LIST = (True, True, False, True)
+    INPUT_IS_LIST = (True, True, False, True)
+    
+    FUNCTION = "passthrough"
+    CATEGORY = "image/cbz/debug"
+
+    def passthrough(self, images, filenames, metadata, cbz_ids):
+        print(f"CBZUnpackerPassthrough: Received {len(images)} images")
+        print(f"  CBZ IDs: {len(cbz_ids)} unique IDs")
+        print(f"  Metadata: {metadata[:100]}...")  # First 100 chars
+        
+        unique_ids = set(cbz_ids)
+        for cbz_id in unique_ids:
+            count = cbz_ids.count(cbz_id)
+            print(f"  ID '{cbz_id}': {count} images")
+            
+        return (images, filenames, metadata, cbz_ids)
+
+
+class CBZCollectorPassthrough:
+    """
+    Debug passthrough node for CBZCollector output
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Images from CBZCollector"}),
+                "filenames": ("STRING", {"tooltip": "Filenames from CBZCollector"}),
+                "metadata": ("STRING", {"tooltip": "Metadata from CBZCollector"}),
+                "cbz_paths": ("STRING", {"tooltip": "CBZ paths from CBZCollector"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGES", "FILENAMES", "METADATA", "CBZ_PATHS")
+    OUTPUT_IS_LIST = (True, True, False, False)
+    INPUT_IS_LIST = (True, True, False, False)
+    
+    FUNCTION = "passthrough"
+    CATEGORY = "image/cbz/debug"
+
+    def passthrough(self, images, filenames, metadata, cbz_paths):
+        print(f"CBZCollectorPassthrough: Received {len(images)} images")
+        print(f"  CBZ paths: {cbz_paths}")
+        print(f"  Metadata type: {type(metadata)}")
+        
+        if isinstance(cbz_paths, list):
+            print(f"  Number of CBZ paths: {len(cbz_paths)}")
+            for i, path in enumerate(cbz_paths):
+                print(f"    [{i}]: {path}")
+        else:
+            print(f"  Single CBZ path: {cbz_paths}")
+            
+        return (images, filenames, metadata, cbz_paths)
+
+
+class ExportCBZPassthrough:
+    """
+    Debug passthrough node for ExportCBZ output
+    """
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "output_path": ("STRING", {"tooltip": "Output path from ExportCBZ"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("OUTPUT_PATH",)
+    OUTPUT_IS_LIST = (False,)
+    INPUT_IS_LIST = (False,)
+    
+    FUNCTION = "passthrough"
+    CATEGORY = "image/cbz/debug"
+
+    def passthrough(self, output_path):
+        print(f"ExportCBZPassthrough: Output path = {output_path}")
+        return (output_path,)
+
+
 class CBZUnpacker:
     """
     A CBZ unpacker node for ComfyUI
@@ -258,7 +389,6 @@ class CBZUnpacker:
         
         return (images, filenames, metadata, cbz_ids)
 
-
 class DirToCBZ:
     """
     A directory scanner node for finding CBZ files
@@ -412,9 +542,6 @@ class CBZCollector:
         return float("NaN")
 
     def collect_cbz_data(self, images, filenames, metadata, cbz_ids, force_output=False):
-        """
-        Collect and group images by CBZ ID.
-        """
         print(f"CBZCollector: Processing {len(images)} items")
         
         # Group data by CBZ ID
@@ -529,15 +656,6 @@ class ExportCBZ:
     CATEGORY = "image/cbz"
 
     def create_comic_info_xml(self, metadata_json):
-        """
-        Convert JSON metadata back to ComicInfo.xml format.
-        
-        Args:
-            metadata_json (str): JSON string containing metadata
-            
-        Returns:
-            str: XML formatted ComicInfo content
-        """
         try:
             metadata = json.loads(metadata_json)
             
@@ -579,24 +697,12 @@ class ExportCBZ:
             return None
 
     def export_cbz(self, images, filenames, metadata, cbz_path, output_directory="", suffix="_processed",
-                   image_quality=95, image_format="JPEG", preserve_structure=True):
-        """
-        Export images and metadata to a CBZ file.
+               image_quality=95, image_format="JPEG", preserve_structure=True):
+
+        # Handle the case where cbz_path is a list (from CBZCollector)
+        if isinstance(cbz_path, list) and cbz_path:
+            cbz_path = cbz_path[0]  # Take the first path
         
-        Args:
-            images: List of image tensors
-            filenames: List of original filenames
-            metadata: JSON metadata string
-            cbz_path: Original CBZ path for reference
-            output_directory: Output directory (empty = same as input)
-            suffix: Suffix for output filename
-            image_quality: JPEG quality (1-100)
-            image_format: Output format ("JPEG" or "PNG")
-            preserve_structure: Keep original filenames and structure
-            
-        Returns:
-            tuple: (output_path,)
-        """
         # Generate output path
         if not output_directory:
             output_directory = os.path.dirname(cbz_path)
@@ -684,7 +790,11 @@ NODE_CLASS_MAPPINGS = {
     "CBZUnpacker": CBZUnpacker,
     "DirToCBZ": DirToCBZ,
     "CBZCollector": CBZCollector,
-    "ExportCBZ": ExportCBZ
+    "ExportCBZ": ExportCBZ,
+    "DirToCBZPassthrough": DirToCBZPassthrough,
+    "CBZUnpackerPassthrough": CBZUnpackerPassthrough,
+    "CBZCollectorPassthrough": CBZCollectorPassthrough,
+    "ExportCBZPassthrough": ExportCBZPassthrough
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -692,5 +802,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CBZUnpacker": "CBZ Unpacker",
     "DirToCBZ": "Directory to CBZ List", 
     "CBZCollector": "CBZ Collector",
-    "ExportCBZ": "Export CBZ"
+    "ExportCBZ": "Export CBZ",
+    "DirToCBZPassthrough": "DirToCBZ Passthrough (Debug)",
+    "CBZUnpackerPassthrough": "CBZUnpacker Passthrough (Debug)",
+    "CBZCollectorPassthrough": "CBZCollector Passthrough (Debug)",
+    "ExportCBZPassthrough": "ExportCBZ Passthrough (Debug)"
 }
