@@ -355,7 +355,7 @@ class DirToCBZ:
         if not cbz_files:
             print(f"Warning: No CBZ files found in directory '{directory_path}'")
         
-        return (cbz_ids,)
+        return (cbz_files,)
 
 
 class CBZCollector:
