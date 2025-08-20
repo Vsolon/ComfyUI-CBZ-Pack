@@ -1,8 +1,4 @@
-"suffix": ("STRING", {
-                    "default": "_processed",
-                    "multiline": False,
-                    "tooltip": "Suffix to add to output filename"
-                }),import os
+import os
 import zipfile
 import xml.etree.ElementTree as ET
 from inspect import cleandoc
@@ -513,6 +509,11 @@ class ExportCBZ:
                     "label_on": "enabled",
                     "label_off": "disabled",
                     "tooltip": "Keep original directory structure and filenames"
+                }),
+                "suffix": ("STRING", {
+                    "default": "_processed",
+                    "multiline": False,
+                    "tooltip": "Suffix to add to output filename"
                 }),
             }
         }
