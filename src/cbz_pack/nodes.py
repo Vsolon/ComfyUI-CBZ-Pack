@@ -698,10 +698,33 @@ class ExportCBZ:
 
     def export_cbz(self, images, filenames, metadata, cbz_path, output_directory="", suffix="_processed",
                image_quality=95, image_format="JPEG", preserve_structure=True):
-
-        # Handle the case where cbz_path is a list (from CBZCollector)
-        if isinstance(cbz_path, list) and cbz_path:
-            cbz_path = cbz_path[0]  # Take the first path
+        """
+        Export images and metadata to a CBZ file.
+        
+        Args:
+            images: List of image tensors
+            filenames: List of original filenames
+            metadata: JSON metadata string
+            cbz_path: Original CBZ path for reference (now a nested list)
+            output_directory: Output directory (empty = same as input)
+            suffix: Suffix for output filename
+            image_quality: JPEG quality (1-100)
+            image_format: Output format ("JPEG" or "PNG")
+            preserve_structure: Keep original filenames and structure
+            
+        Returns:
+            tuple: (output_path,)
+        """
+        # Handle the case where cbz_path is a nested list (from CBZCollector)
+        if isinstance(cbz_path, list):
+            if cbz_path and isinstance(cbz_path[0], list):
+                cbz_path = cbz_path[0][0]  # Handle nested list: [[path]]
+            else:
+                cbz_path = cbz_path[0]  # Handle simple list: [path]
+        
+        # Handle the case where metadata is a list
+        if isinstance(metadata, list) and metadata:
+            metadata = metadata[0]  # Take the first element
         
         # Generate output path
         if not output_directory:
@@ -722,6 +745,8 @@ class ExportCBZ:
             filenames = [filenames]
         
         print(f"ExportCBZ: Processing {len(images)} images for {output_path}")
+        print(f"ExportCBZ: Input cbz_path type: {type(cbz_path)}, value: {cbz_path}")
+        print(f"ExportCBZ: Input metadata type: {type(metadata)}, length: {len(metadata) if isinstance(metadata, str) else 'N/A'}")
         
         if len(images) != len(filenames):
             raise ValueError(f"Number of images ({len(images)}) must match number of filenames ({len(filenames)})")
