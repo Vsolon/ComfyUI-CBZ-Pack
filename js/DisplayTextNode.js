@@ -1,5 +1,5 @@
-import { app } from '@/scripts/app'
-import { ComfyWidgets } from '@/scripts/widgets'
+import { app } from '../../web/scripts/app.js'
+import { ComfyWidgets } from '../../web/scripts/widgets.js'
 
 app.registerExtension({
   name: 'Comfy.DirToCBZPassthrough',
