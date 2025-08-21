@@ -1,37 +1,27 @@
 from inspect import cleandoc
 
-# Global variable for preview (as shown in the example)
-_curr_preview = {}
-
-def show_text(text: str):
-    """Add a preview text to the ComfyUI node.
-    
-    Args:
-        text (str): The text to display.
-    """
-    if "text" not in _curr_preview:
-        _curr_preview["text"] = []
-    _curr_preview["text"].append(text)
-
-
-class DirToCBZPassthrough:    
+class DirToCBZPassthrough:
     @classmethod
-    def INPUT_TYPES(cls):
+    def INPUT_TYPES(s):
         return {
             "required": {
                 "cbz_paths": ("STRING", {"tooltip": "CBZ paths from DirToCBZ"}),
-            }
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
+    INPUT_IS_LIST = True
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("CBZ_PATHS",)
-    OUTPUT_IS_LIST = (True,)
-    INPUT_IS_LIST = (True,)
     OUTPUT_NODE = True
+    OUTPUT_IS_LIST = (True,)
     FUNCTION = "passthrough"
     CATEGORY = "image/cbz/debug"
 
-    def passthrough(self, cbz_paths):
+    def passthrough(self, cbz_paths, unique_id=None, extra_pnginfo=None):
         print(f"DirToCBZPassthrough: Received {len(cbz_paths)} CBZ paths")
         
         # Create display text with all paths
@@ -40,36 +30,49 @@ class DirToCBZPassthrough:
             display_text += f"{i+1}. {path}\n"
             print(f"  [{i}]: {path}")
         
-        # Use the show_text function to display in UI
-        show_text(display_text)
+        # Update node widget values for display (like ShowText does)
+        if unique_id is not None and extra_pnginfo is not None:
+            if not isinstance(extra_pnginfo, list):
+                print("Error: extra_pnginfo is not a list")
+            elif (
+                not isinstance(extra_pnginfo[0], dict)
+                or "workflow" not in extra_pnginfo[0]
+            ):
+                print("Error: extra_pnginfo[0] is not a dict or missing 'workflow' key")
+            else:
+                workflow = extra_pnginfo[0]["workflow"]
+                node = next(
+                    (x for x in workflow["nodes"] if str(x["id"]) == str(unique_id[0])),
+                    None,
+                )
+                if node:
+                    node["widgets_values"] = [display_text]
         
-        # Return the result for downstream nodes
-        result = (cbz_paths,)
-        
-        # Combine with the preview data
-        if _curr_preview:
-            return {"ui": _curr_preview, "result": result}
-        else:
-            return {"result": result}
+        # Return both the UI text and the original paths
+        return {"ui": {"text": [display_text]}, "result": (cbz_paths,)}
 
 
-# Display-only node
+# Also create a dedicated display node like ShowText
 class CBZPathDisplay:
-    
     @classmethod
-    def INPUT_TYPES(cls):
+    def INPUT_TYPES(s):
         return {
             "required": {
-                "cbz_paths": ("STRING", {"tooltip": "CBZ paths to display"}),
-            }
+                "cbz_paths": ("STRING", {"tooltip": "CBZ paths to display", "forceInput": True}),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
+    INPUT_IS_LIST = True
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "display"
     CATEGORY = "image/cbz/debug"
 
-    def display(self, cbz_paths):
+    def display(self, cbz_paths, unique_id=None, extra_pnginfo=None):
         print(f"CBZPathDisplay: Received {len(cbz_paths)} CBZ paths")
         
         # Create display text with all paths
@@ -78,11 +81,27 @@ class CBZPathDisplay:
             display_text += f"{i+1}. {path}\n"
             print(f"  [{i}]: {path}")
         
-        # Use the show_text function to display in UI
-        show_text(display_text)
+        # Update node widget values for display (like ShowText does)
+        if unique_id is not None and extra_pnginfo is not None:
+            if not isinstance(extra_pnginfo, list):
+                print("Error: extra_pnginfo is not a list")
+            elif (
+                not isinstance(extra_pnginfo[0], dict)
+                or "workflow" not in extra_pnginfo[0]
+            ):
+                print("Error: extra_pnginfo[0] is not a dict or missing 'workflow' key")
+            else:
+                workflow = extra_pnginfo[0]["workflow"]
+                node = next(
+                    (x for x in workflow["nodes"] if str(x["id"]) == str(unique_id[0])),
+                    None,
+                )
+                if node:
+                    node["widgets_values"] = [display_text]
         
-        # Return only the UI data for output nodes
-        return {"ui": _curr_preview}
+        # Return only UI text (no data output)
+        return {"ui": {"text": [display_text]}}
+
 
 class CBZUnpackerPassthrough: 
     @classmethod
