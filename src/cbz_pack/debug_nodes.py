@@ -1,5 +1,51 @@
 from inspect import cleandoc
 
+class CBZPreviewAny:
+    """Display any data as string, for CBZ pipeline debugging/previewing."""
+
+    NAME = "CBZ Preview Any"
+    CATEGORY = "CBZ Preview"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "source": ("*", {}),  # Accepts any input type
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "main"
+    OUTPUT_NODE = True
+
+    def main(self, source=None, unique_id=None, extra_pnginfo=None):
+        value = "None"
+        if isinstance(source, str):
+            value = source
+        elif isinstance(source, (int, float, bool)):
+            value = str(source)
+        elif source is not None:
+            try:
+                value = json.dumps(source)
+            except Exception:
+                try:
+                    value = str(source)
+                except Exception:
+                    value = "source exists, but could not be serialized."
+
+        # Pre-fill on reload
+        if extra_pnginfo and unique_id:
+            for node in extra_pnginfo.get("workflow", {}).get("nodes", []):
+                if str(node.get("id")) == str(unique_id):
+                    node["widgets_values"] = [value]
+                    break
+
+        return {"ui": {"text": (value,)}}
+
 class DirToCBZPassthrough:    
     @classmethod
     def INPUT_TYPES(cls):
@@ -124,12 +170,14 @@ NODE_CLASS_MAPPINGS = {
     "DirToCBZPassthrough": DirToCBZPassthrough,
     "CBZUnpackerPassthrough": CBZUnpackerPassthrough,
     "CBZCollectorPassthrough": CBZCollectorPassthrough,
-    "ExportCBZPassthrough": ExportCBZPassthrough
+    "ExportCBZPassthrough": ExportCBZPassthrough,
+    "CBZ Preview Any": CBZPreviewAny,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DirToCBZPassthrough": "DirToCBZ Passthrough (Debug)",
     "CBZUnpackerPassthrough": "CBZUnpacker Passthrough (Debug)",
     "CBZCollectorPassthrough": "CBZCollector Passthrough (Debug)",
-    "ExportCBZPassthrough": "ExportCBZ Passthrough (Debug)"
+    "ExportCBZPassthrough": "ExportCBZ Passthrough (Debug)",
+     "CBZ Preview Any": "CBZ Preview Any",
 }
