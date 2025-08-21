@@ -9,10 +9,11 @@ class DirToCBZPassthrough:
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("CBZ_PATHS", "DISPLAY_TEXT")
-    OUTPUT_IS_LIST = (True, False)
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("CBZ_PATHS",)
+    OUTPUT_IS_LIST = (True,)
     INPUT_IS_LIST = (True,)
+    OUTPUT_NODE = True
     
     FUNCTION = "passthrough"
     CATEGORY = "image/cbz/debug"
@@ -26,7 +27,8 @@ class DirToCBZPassthrough:
             display_text += f"{i+1}. {path}\n"
             print(f"  [{i}]: {path}")
         
-        return (cbz_paths, display_text)
+        # Return both the paths for downstream nodes and UI display
+        return {"ui": {"text": (display_text,)}, "result": (cbz_paths,)}
 
 class CBZUnpackerPassthrough: 
     @classmethod
