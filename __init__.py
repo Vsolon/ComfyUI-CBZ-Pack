@@ -10,7 +10,14 @@ __author__ = """Vsolon"""
 __email__ = "you@gmail.com"
 __version__ = "0.0.1"
 
-from .src.cbz_pack.nodes import NODE_CLASS_MAPPINGS
-from .src.cbz_pack.nodes import NODE_DISPLAY_NAME_MAPPINGS
+# Import main nodes
+from .src.cbz_pack.nodes import NODE_CLASS_MAPPINGS as MAIN_NODES
+from .src.cbz_pack.nodes import NODE_DISPLAY_NAME_MAPPINGS as MAIN_DISPLAY_NAMES
 
+# Import debug nodes
+from .src.cbz_pack.debug_nodes import NODE_CLASS_MAPPINGS as DEBUG_NODES
+from .src.cbz_pack.debug_nodes import NODE_DISPLAY_NAME_MAPPINGS as DEBUG_DISPLAY_NAMES
 
+# Combine both mappings
+NODE_CLASS_MAPPINGS = {**MAIN_NODES, **DEBUG_NODES}
+NODE_DISPLAY_NAME_MAPPINGS = {**MAIN_DISPLAY_NAMES, **DEBUG_DISPLAY_NAMES}

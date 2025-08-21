@@ -1,3 +1,5 @@
+from inspect import cleandoc
+
 class DirToCBZPassthrough:    
     @classmethod
     def INPUT_TYPES(cls):
@@ -58,7 +60,6 @@ class CBZUnpackerPassthrough:
             
         return (images, filenames, metadata, cbz_ids)
 
-
 class CBZCollectorPassthrough:
     @classmethod
     def INPUT_TYPES(cls):
@@ -93,9 +94,7 @@ class CBZCollectorPassthrough:
             
         return (images, filenames, metadata, cbz_paths)
 
-
 class ExportCBZPassthrough:
-    
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -116,15 +115,12 @@ class ExportCBZPassthrough:
         print(f"ExportCBZPassthrough: Output path = {output_path}")
         return (output_path,)
 
-
-
 NODE_CLASS_MAPPINGS = { 
     "DirToCBZPassthrough": DirToCBZPassthrough,
     "CBZUnpackerPassthrough": CBZUnpackerPassthrough,
     "CBZCollectorPassthrough": CBZCollectorPassthrough,
     "ExportCBZPassthrough": ExportCBZPassthrough
 }
-
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DirToCBZPassthrough": "DirToCBZ Passthrough (Debug)",
