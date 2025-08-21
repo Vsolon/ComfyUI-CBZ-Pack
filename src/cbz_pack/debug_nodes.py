@@ -28,7 +28,10 @@ class DirToCBZPassthrough:
             print(f"  [{i}]: {path}")
         
         # Return both the paths for downstream nodes and UI display
-        return {"ui": {"text": (display_text,)}, "result": (cbz_paths,)}
+        return {
+            "ui": {"text": (display_text,)},
+            "result": (cbz_paths,)
+        }
 
 class CBZUnpackerPassthrough: 
     @classmethod

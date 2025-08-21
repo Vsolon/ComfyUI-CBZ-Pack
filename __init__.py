@@ -3,7 +3,7 @@
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
-    
+    "WEB_DIRECTORY",
 ]
 
 __author__ = """Vsolon"""
@@ -21,3 +21,5 @@ from .src.cbz_pack.debug_nodes import NODE_DISPLAY_NAME_MAPPINGS as DEBUG_DISPLA
 # Combine both mappings
 NODE_CLASS_MAPPINGS = {**MAIN_NODES, **DEBUG_NODES}
 NODE_DISPLAY_NAME_MAPPINGS = {**MAIN_DISPLAY_NAMES, **DEBUG_DISPLAY_NAMES}
+
+WEB_DIRECTORY = "./js"
