@@ -1,5 +1,4 @@
 import { app } from '@/scripts/app'
-import { DOMWidget } from '@/scripts/domWidget'
 import { ComfyWidgets } from '@/scripts/widgets'
 
 app.registerExtension({
@@ -18,8 +17,8 @@ app.registerExtension({
 
         const widgetConfig = ['STRING', { multiline: true }]
         const result = ComfyWidgets['STRING'](this, 'preview', widgetConfig, app)
+        const previewWidget = result?.widget
 
-        const previewWidget = result?.widget as DOMWidget
         if (previewWidget) {
           console.log('[DirToCBZPassthrough] Preview widget created')
           previewWidget.element.readOnly = true
@@ -28,7 +27,9 @@ app.registerExtension({
           console.warn('[DirToCBZPassthrough] Failed to create preview widget')
         }
 
-        this.addCustomWidget?.(previewWidget)
+        if (this.addCustomWidget && previewWidget) {
+          this.addCustomWidget(previewWidget)
+        }
       }
 
       const onExecuted = nodeType.prototype.onExecuted
@@ -49,5 +50,5 @@ app.registerExtension({
         }
       }
     }
-  },
+  }
 })
