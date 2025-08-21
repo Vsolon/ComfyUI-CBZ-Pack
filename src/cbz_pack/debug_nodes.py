@@ -1,5 +1,19 @@
 from inspect import cleandoc
 
+# Global variable for preview (as shown in the example)
+_curr_preview = {}
+
+def show_text(text: str):
+    """Add a preview text to the ComfyUI node.
+    
+    Args:
+        text (str): The text to display.
+    """
+    if "text" not in _curr_preview:
+        _curr_preview["text"] = []
+    _curr_preview["text"].append(text)
+
+
 class DirToCBZPassthrough:    
     @classmethod
     def INPUT_TYPES(cls):
@@ -14,7 +28,6 @@ class DirToCBZPassthrough:
     OUTPUT_IS_LIST = (True,)
     INPUT_IS_LIST = (True,)
     OUTPUT_NODE = True
-    
     FUNCTION = "passthrough"
     CATEGORY = "image/cbz/debug"
 
@@ -27,8 +40,49 @@ class DirToCBZPassthrough:
             display_text += f"{i+1}. {path}\n"
             print(f"  [{i}]: {path}")
         
-        # Return both the paths for downstream nodes and UI display
-        return {"ui": {"text": (display_text,)}, "result": (cbz_paths,)}
+        # Use the show_text function to display in UI
+        show_text(display_text)
+        
+        # Return the result for downstream nodes
+        result = (cbz_paths,)
+        
+        # Combine with the preview data
+        if _curr_preview:
+            return {"ui": _curr_preview, "result": result}
+        else:
+            return {"result": result}
+
+
+# Display-only node
+class CBZPathDisplay:
+    
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "cbz_paths": ("STRING", {"tooltip": "CBZ paths to display"}),
+            }
+        }
+
+    RETURN_TYPES = ()
+    OUTPUT_NODE = True
+    FUNCTION = "display"
+    CATEGORY = "image/cbz/debug"
+
+    def display(self, cbz_paths):
+        print(f"CBZPathDisplay: Received {len(cbz_paths)} CBZ paths")
+        
+        # Create display text with all paths
+        display_text = f"Found {len(cbz_paths)} CBZ files:\n\n"
+        for i, path in enumerate(cbz_paths):
+            display_text += f"{i+1}. {path}\n"
+            print(f"  [{i}]: {path}")
+        
+        # Use the show_text function to display in UI
+        show_text(display_text)
+        
+        # Return only the UI data for output nodes
+        return {"ui": _curr_preview}
 
 class CBZUnpackerPassthrough: 
     @classmethod
@@ -117,16 +171,19 @@ class ExportCBZPassthrough:
         print(f"ExportCBZPassthrough: Output path = {output_path}")
         return (output_path,)
 
+# Add to your node mappings
 NODE_CLASS_MAPPINGS = { 
     "DirToCBZPassthrough": DirToCBZPassthrough,
     "CBZUnpackerPassthrough": CBZUnpackerPassthrough,
     "CBZCollectorPassthrough": CBZCollectorPassthrough,
-    "ExportCBZPassthrough": ExportCBZPassthrough
+    "ExportCBZPassthrough": ExportCBZPassthrough,
+    "CBZPathDisplay": CBZPathDisplay
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DirToCBZPassthrough": "DirToCBZ Passthrough (Debug)",
     "CBZUnpackerPassthrough": "CBZUnpacker Passthrough (Debug)",
     "CBZCollectorPassthrough": "CBZCollector Passthrough (Debug)",
-    "ExportCBZPassthrough": "ExportCBZ Passthrough (Debug)"
+    "ExportCBZPassthrough": "ExportCBZ Passthrough (Debug)",
+    "CBZPathDisplay": "CBZ Path Display"
 }
